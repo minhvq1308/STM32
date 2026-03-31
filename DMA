@@ -1,0 +1,56 @@
+#include "stm32f10x_dma.h"
+#include "stm32f10x_adc.h"
+
+#define BUFFER_SIZE 2048  // Kích thước đủ lớn để lấy mẫu 16kHz
+uint16_t Audio_Buffer[BUFFER_SIZE];
+
+void DMA_Audio_Config(void) {
+    DMA_InitTypeDef DMA_InitStructure;
+
+    /* 1. Bật clock cho bộ điều khiển DMA1 */
+    // DMA nằm trên bus AHB
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+
+    /* 2. Khởi tạo DMA Channel cho ADC1 */
+    // Theo Hardware Manual của STM32F103, ADC1 luôn kết nối với DMA1_Channel1
+    DMA_DeInit(DMA1_Channel1); 
+
+    /* 3. Thiết lập các thông số truyền tải */
+    // Địa chỉ nguồn: Thanh ghi kết quả của ADC1
+    DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&(ADC1->DR);
+    
+    // Địa chỉ đích: Mảng lưu trữ trong RAM
+    DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)Audio_Buffer;
+    
+    // Hướng truyền: Từ ngoại vi vào bộ nhớ
+    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
+    
+    // Số lượng mẫu cần truyền trước khi dừng hoặc lặp lại
+    DMA_InitStructure.DMA_BufferSize = BUFFER_SIZE;
+    
+    // Không tăng địa chỉ ngoại vi (luôn đọc từ 1 thanh ghi ADC_DR duy nhất)
+    DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    
+    // Tăng địa chỉ bộ nhớ (để lưu các mẫu liên tiếp vào mảng)
+    DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    
+    // Kích thước dữ liệu: 16-bit (vì ADC 12-bit trả về kiểu nửa từ - HalfWord)
+    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
+    DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
+    
+    // Chế độ: Circular (Vòng lặp) 
+    // Giúp hệ thống thu âm liên tục không dừng lại
+    DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
+    
+    // Ưu tiên: High (Ưu tiên cao để tránh mất dữ liệu âm thanh)
+    DMA_InitStructure.DMA_Priority = DMA_Priority_High;
+    
+    // Chế độ Memory-to-Memory: Disable (vì đây là ngoại vi-to-bộ nhớ)
+    DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
+
+    /* 4. Ghi cấu hình vào thanh ghi thông qua thư viện stm32f10x_dma.c */
+    DMA_Init(DMA1_Channel1, &DMA_InitStructure);
+
+    /* 5. Kích hoạt Channel */
+    DMA_Cmd(DMA1_Channel1, ENABLE);
+}
